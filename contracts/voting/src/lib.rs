@@ -3,6 +3,16 @@ use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, E
 
 const PROPOSAL_COUNTER: Symbol = symbol_short!("COUNTER");
 
+/// Proposal status after finalization
+#[contracttype]
+#[derive(Clone, PartialEq)]
+pub enum ProposalStatus {
+    Active,
+    Passed,
+    Rejected,
+    Tied,
+}
+
 /// Proposal data structure
 #[contracttype]
 #[derive(Clone)]
@@ -13,6 +23,8 @@ pub struct Proposal {
     pub yes_votes: u64,
     pub no_votes: u64,
     pub deadline: u64,
+    pub status: ProposalStatus,
+    pub finalized: bool,
 }
 
 /// Storage keys
@@ -52,6 +64,8 @@ impl VotingContract {
             yes_votes: 0,
             no_votes: 0,
             deadline,
+            status: ProposalStatus::Active,
+            finalized: false,
         };
         
         // Store proposal
@@ -87,6 +101,11 @@ impl VotingContract {
         // Check deadline
         if env.ledger().timestamp() > proposal.deadline {
             panic!("voting period ended");
+        }
+        
+        // Check if finalized
+        if proposal.finalized {
+            panic!("proposal already finalized");
         }
         
         // Update vote counts
@@ -125,6 +144,75 @@ impl VotingContract {
             .instance()
             .get(&PROPOSAL_COUNTER)
             .unwrap_or(0)
+    }
+
+    /// Finalize a proposal after the voting period ends
+    pub fn finalize(env: Env, proposal_id: u64) {
+        // Get proposal
+        let mut proposal: Proposal = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Proposal(proposal_id))
+            .unwrap_or_else(|| panic!("proposal does not exist"));
+        
+        // Check if already finalized
+        if proposal.finalized {
+            panic!("proposal already finalized");
+        }
+        
+        // Check if voting period has ended
+        if env.ledger().timestamp() <= proposal.deadline {
+            panic!("voting period not ended");
+        }
+        
+        // Determine outcome
+        proposal.status = if proposal.yes_votes > proposal.no_votes {
+            ProposalStatus::Passed
+        } else if proposal.no_votes > proposal.yes_votes {
+            ProposalStatus::Rejected
+        } else {
+            ProposalStatus::Tied
+        };
+        
+        proposal.finalized = true;
+        
+        // Store updated proposal
+        env.storage()
+            .persistent()
+            .set(&DataKey::Proposal(proposal_id), &proposal);
+    }
+
+    /// Get the current status of a proposal
+    pub fn get_status(env: Env, proposal_id: u64) -> ProposalStatus {
+        let proposal: Proposal = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Proposal(proposal_id))
+            .unwrap_or_else(|| panic!("proposal does not exist"));
+        
+        proposal.status
+    }
+
+    /// Get vote tally for a proposal
+    pub fn get_tally(env: Env, proposal_id: u64) -> (u64, u64) {
+        let proposal: Proposal = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Proposal(proposal_id))
+            .unwrap_or_else(|| panic!("proposal does not exist"));
+        
+        (proposal.yes_votes, proposal.no_votes)
+    }
+
+    /// Check if a proposal is finalized
+    pub fn is_finalized(env: Env, proposal_id: u64) -> bool {
+        let proposal: Proposal = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Proposal(proposal_id))
+            .unwrap_or_else(|| panic!("proposal does not exist"));
+        
+        proposal.finalized
     }
 }
 
