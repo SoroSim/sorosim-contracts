@@ -146,5 +146,135 @@ impl MultisigContract {
             .get(&TX_COUNTER)
             .unwrap_or(0)
     }
+
+    /// Approve a pending transaction
+    pub fn approve(env: Env, tx_id: u64, approver: Address) {
+        approver.require_auth();
+        
+        // Check if approver is an owner
+        if !Self::is_owner(env.clone(), approver.clone()) {
+            panic!("not an owner");
+        }
+        
+        // Get transaction
+        let mut transaction: Transaction = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Transaction(tx_id))
+            .unwrap_or_else(|| panic!("transaction does not exist"));
+        
+        // Check status
+        if transaction.status != TxStatus::Pending {
+            panic!("transaction not pending");
+        }
+        
+        // Check if already approved
+        for approval in transaction.approvals.iter() {
+            if approval == approver {
+                panic!("already approved");
+            }
+        }
+        
+        // Add approval
+        transaction.approvals.push_back(approver);
+        
+        // Store updated transaction
+        env.storage()
+            .persistent()
+            .set(&DataKey::Transaction(tx_id), &transaction);
+    }
+
+    /// Execute a transaction if threshold is met
+    pub fn execute(env: Env, tx_id: u64) {
+        // Get transaction
+        let mut transaction: Transaction = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Transaction(tx_id))
+            .unwrap_or_else(|| panic!("transaction does not exist"));
+        
+        // Check status
+        if transaction.status != TxStatus::Pending {
+            panic!("transaction not pending");
+        }
+        
+        // Get threshold
+        let threshold: u32 = env
+            .storage()
+            .instance()
+            .get(&THRESHOLD)
+            .unwrap_or_else(|| panic!("not initialized"));
+        
+        // Check if threshold is met
+        if transaction.approvals.len() < threshold {
+            panic!("threshold not met");
+        }
+        
+        // Mark as executed
+        transaction.status = TxStatus::Executed;
+        
+        // Store updated transaction
+        env.storage()
+            .persistent()
+            .set(&DataKey::Transaction(tx_id), &transaction);
+    }
+
+    /// Cancel a pending transaction (only proposer can cancel)
+    pub fn cancel(env: Env, tx_id: u64, canceller: Address) {
+        canceller.require_auth();
+        
+        // Get transaction
+        let mut transaction: Transaction = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Transaction(tx_id))
+            .unwrap_or_else(|| panic!("transaction does not exist"));
+        
+        // Check status
+        if transaction.status != TxStatus::Pending {
+            panic!("transaction not pending");
+        }
+        
+        // Check authorization (only proposer can cancel)
+        if transaction.proposer != canceller {
+            panic!("not the proposer");
+        }
+        
+        // Mark as cancelled
+        transaction.status = TxStatus::Cancelled;
+        
+        // Store updated transaction
+        env.storage()
+            .persistent()
+            .set(&DataKey::Transaction(tx_id), &transaction);
+    }
+
+    /// Get the number of approvals for a transaction
+    pub fn get_approval_count(env: Env, tx_id: u64) -> u32 {
+        let transaction: Transaction = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Transaction(tx_id))
+            .unwrap_or_else(|| panic!("transaction does not exist"));
+        
+        transaction.approvals.len()
+    }
+
+    /// Check if threshold is met for a transaction
+    pub fn is_threshold_met(env: Env, tx_id: u64) -> bool {
+        let transaction: Transaction = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Transaction(tx_id))
+            .unwrap_or_else(|| panic!("transaction does not exist"));
+        
+        let threshold: u32 = env
+            .storage()
+            .instance()
+            .get(&THRESHOLD)
+            .unwrap_or_else(|| panic!("not initialized"));
+        
+        transaction.approvals.len() >= threshold
+    }
 }
 
