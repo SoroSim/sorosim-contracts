@@ -1,5 +1,7 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contractclient, contracttype, symbol_short, Address, Env, Symbol};
+use soroban_sdk::{
+    contract, contractclient, contractimpl, contracttype, symbol_short, Address, Env, Symbol,
+};
 
 const CALLEE: Symbol = symbol_short!("CALLEE");
 
@@ -33,7 +35,7 @@ impl CallerContract {
         if env.storage().instance().has(&CALLEE) {
             panic!("already initialized");
         }
-        
+
         env.storage().instance().set(&CALLEE, &callee);
     }
 
@@ -44,7 +46,7 @@ impl CallerContract {
             .instance()
             .get(&CALLEE)
             .unwrap_or_else(|| panic!("not initialized"));
-        
+
         // Create client and invoke
         let client = CalleeClient::new(&env, &callee);
         client.get_counter()
@@ -57,7 +59,7 @@ impl CallerContract {
             .instance()
             .get(&CALLEE)
             .unwrap_or_else(|| panic!("not initialized"));
-        
+
         let client = CalleeClient::new(&env, &callee);
         client.increment()
     }
@@ -69,7 +71,7 @@ impl CallerContract {
             .instance()
             .get(&CALLEE)
             .unwrap_or_else(|| panic!("not initialized"));
-        
+
         let client = CalleeClient::new(&env, &callee);
         client.add_value(&value)
     }
@@ -81,7 +83,7 @@ impl CallerContract {
             .instance()
             .get(&CALLEE)
             .unwrap_or_else(|| panic!("not initialized"));
-        
+
         let client = CalleeClient::new(&env, &callee);
         client.get_balance(&user)
     }
@@ -93,7 +95,7 @@ impl CallerContract {
             .instance()
             .get(&CALLEE)
             .unwrap_or_else(|| panic!("not initialized"));
-        
+
         let client = CalleeClient::new(&env, &callee);
         client.get_stats()
     }
@@ -105,7 +107,7 @@ impl CallerContract {
             .instance()
             .get(&CALLEE)
             .unwrap_or_else(|| panic!("not initialized"));
-        
+
         let caller_address = env.current_contract_address();
         let client = CalleeClient::new(&env, &callee);
         client.get_data(&caller_address)
@@ -118,13 +120,13 @@ impl CallerContract {
             .instance()
             .get(&CALLEE)
             .unwrap_or_else(|| panic!("not initialized"));
-        
+
         let client = CalleeClient::new(&env, &callee);
-        
+
         let initial = client.get_counter();
         let after_increment = client.increment();
         let after_add = client.add_value(&value);
-        
+
         (initial, after_increment, after_add)
     }
 
@@ -135,7 +137,7 @@ impl CallerContract {
             .instance()
             .get(&CALLEE)
             .unwrap_or_else(|| panic!("not initialized"));
-        
+
         let client = CalleeClient::new(&env, &callee);
         client.multiply(&a, &b)
     }
@@ -147,12 +149,12 @@ impl CallerContract {
             .instance()
             .get(&CALLEE)
             .unwrap_or_else(|| panic!("not initialized"));
-        
+
         let client = CalleeClient::new(&env, &callee);
-        
+
         // Multiply via cross-contract call
         let product = client.multiply(&a, &b);
-        
+
         // Add to counter via cross-contract call
         client.add_value(&product)
     }
@@ -165,4 +167,3 @@ impl CallerContract {
             .unwrap_or_else(|| panic!("not initialized"))
     }
 }
-

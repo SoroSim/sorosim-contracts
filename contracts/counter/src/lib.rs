@@ -92,10 +92,10 @@ mod test {
         client.increment();
         client.increment();
         assert_eq!(client.get(), 2);
-        
+
         client.decrement();
         assert_eq!(client.get(), 1);
-        
+
         client.decrement();
         assert_eq!(client.get(), 0);
     }
@@ -123,11 +123,11 @@ mod test {
         for i in 1..=10 {
             assert_eq!(client.increment(), i);
         }
-        
+
         for i in (5..10).rev() {
             assert_eq!(client.decrement(), i);
         }
-        
+
         assert_eq!(client.get(), 5);
     }
 
@@ -141,13 +141,12 @@ mod test {
         client.increment();
         client.increment();
         client.increment();
-        
+
         // Value should persist
         assert_eq!(client.get(), 3);
         assert_eq!(client.get(), 3); // Multiple reads
-        
+
         // Continue incrementing
         assert_eq!(client.increment(), 4);
     }
 }
-

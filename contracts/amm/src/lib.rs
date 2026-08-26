@@ -24,7 +24,7 @@ impl AmmContract {
         if env.storage().instance().has(&TOKEN_A) {
             panic!("already initialized");
         }
-        
+
         env.storage().instance().set(&TOKEN_A, &token_a);
         env.storage().instance().set(&TOKEN_B, &token_b);
         env.storage().instance().set(&RESERVE_A, &0i128);
@@ -34,17 +34,9 @@ impl AmmContract {
 
     /// Get the reserve amounts for both tokens
     pub fn get_reserves(env: Env) -> (i128, i128) {
-        let reserve_a: i128 = env
-            .storage()
-            .instance()
-            .get(&RESERVE_A)
-            .unwrap_or(0);
-        let reserve_b: i128 = env
-            .storage()
-            .instance()
-            .get(&RESERVE_B)
-            .unwrap_or(0);
-        
+        let reserve_a: i128 = env.storage().instance().get(&RESERVE_A).unwrap_or(0);
+        let reserve_b: i128 = env.storage().instance().get(&RESERVE_B).unwrap_or(0);
+
         (reserve_a, reserve_b)
     }
 
@@ -60,7 +52,7 @@ impl AmmContract {
             .instance()
             .get(&TOKEN_B)
             .unwrap_or_else(|| panic!("not initialized"));
-        
+
         (token_a, token_b)
     }
 
@@ -74,10 +66,7 @@ impl AmmContract {
 
     /// Get total LP token shares
     pub fn get_total_shares(env: Env) -> i128 {
-        env.storage()
-            .instance()
-            .get(&TOTAL_SHARES)
-            .unwrap_or(0)
+        env.storage().instance().get(&TOTAL_SHARES).unwrap_or(0)
     }
 
     /// Calculate the constant product (k = x * y)
@@ -105,24 +94,20 @@ impl AmmContract {
     }
 
     /// Add liquidity to the pool
-    pub fn add_liquidity(
-        env: Env,
-        provider: Address,
-        amount_a: i128,
-        amount_b: i128,
-    ) -> i128 {
+    pub fn add_liquidity(env: Env, provider: Address, amount_a: i128, amount_b: i128) -> i128 {
         provider.require_auth();
-        
+
         if amount_a <= 0 || amount_b <= 0 {
             panic!("amounts must be positive");
         }
-        
+
         let (reserve_a, reserve_b) = Self::get_reserves(env.clone());
         let total_shares = Self::get_total_shares(env.clone());
-        
+
         let shares_to_mint = if total_shares == 0 {
             // First liquidity provider gets sqrt(amount_a * amount_b) shares
-            let product = amount_a.checked_mul(amount_b)
+            let product = amount_a
+                .checked_mul(amount_b)
                 .unwrap_or_else(|| panic!("overflow"));
             Self::sqrt(product)
         } else {
@@ -130,71 +115,81 @@ impl AmmContract {
             let share_a = (amount_a * total_shares) / reserve_a;
             let share_b = (amount_b * total_shares) / reserve_b;
             // Use minimum to maintain ratio
-            if share_a < share_b { share_a } else { share_b }
+            if share_a < share_b {
+                share_a
+            } else {
+                share_b
+            }
         };
-        
+
         if shares_to_mint <= 0 {
             panic!("insufficient liquidity");
         }
-        
+
         // Update reserves
-        env.storage().instance().set(&RESERVE_A, &(reserve_a + amount_a));
-        env.storage().instance().set(&RESERVE_B, &(reserve_b + amount_b));
-        
+        env.storage()
+            .instance()
+            .set(&RESERVE_A, &(reserve_a + amount_a));
+        env.storage()
+            .instance()
+            .set(&RESERVE_B, &(reserve_b + amount_b));
+
         // Update shares
         let provider_shares = Self::get_shares(env.clone(), provider.clone());
-        env.storage()
-            .persistent()
-            .set(&DataKey::Share(provider.clone()), &(provider_shares + shares_to_mint));
-        
+        env.storage().persistent().set(
+            &DataKey::Share(provider.clone()),
+            &(provider_shares + shares_to_mint),
+        );
+
         env.storage()
             .instance()
             .set(&TOTAL_SHARES, &(total_shares + shares_to_mint));
-        
+
         shares_to_mint
     }
 
     /// Remove liquidity from the pool
-    pub fn remove_liquidity(
-        env: Env,
-        provider: Address,
-        shares: i128,
-    ) -> (i128, i128) {
+    pub fn remove_liquidity(env: Env, provider: Address, shares: i128) -> (i128, i128) {
         provider.require_auth();
-        
+
         if shares <= 0 {
             panic!("shares must be positive");
         }
-        
+
         let provider_shares = Self::get_shares(env.clone(), provider.clone());
         if provider_shares < shares {
             panic!("insufficient shares");
         }
-        
+
         let (reserve_a, reserve_b) = Self::get_reserves(env.clone());
         let total_shares = Self::get_total_shares(env.clone());
-        
+
         // Calculate proportional amounts to return
         let amount_a = (shares * reserve_a) / total_shares;
         let amount_b = (shares * reserve_b) / total_shares;
-        
+
         if amount_a <= 0 || amount_b <= 0 {
             panic!("insufficient liquidity");
         }
-        
+
         // Update reserves
-        env.storage().instance().set(&RESERVE_A, &(reserve_a - amount_a));
-        env.storage().instance().set(&RESERVE_B, &(reserve_b - amount_b));
-        
-        // Update shares
         env.storage()
-            .persistent()
-            .set(&DataKey::Share(provider.clone()), &(provider_shares - shares));
-        
+            .instance()
+            .set(&RESERVE_A, &(reserve_a - amount_a));
+        env.storage()
+            .instance()
+            .set(&RESERVE_B, &(reserve_b - amount_b));
+
+        // Update shares
+        env.storage().persistent().set(
+            &DataKey::Share(provider.clone()),
+            &(provider_shares - shares),
+        );
+
         env.storage()
             .instance()
             .set(&TOTAL_SHARES, &(total_shares - shares));
-        
+
         (amount_a, amount_b)
     }
 
@@ -206,29 +201,33 @@ impl AmmContract {
         min_amount_b_out: i128,
     ) -> i128 {
         user.require_auth();
-        
+
         if amount_a_in <= 0 {
             panic!("amount must be positive");
         }
-        
+
         let (reserve_a, reserve_b) = Self::get_reserves(env.clone());
-        
+
         if reserve_a == 0 || reserve_b == 0 {
             panic!("no liquidity");
         }
-        
+
         // Calculate output using constant product formula: x * y = k
         // amount_out = (amount_in * reserve_out) / (reserve_in + amount_in)
         let amount_b_out = (amount_a_in * reserve_b) / (reserve_a + amount_a_in);
-        
+
         if amount_b_out < min_amount_b_out {
             panic!("slippage exceeded");
         }
-        
+
         // Update reserves
-        env.storage().instance().set(&RESERVE_A, &(reserve_a + amount_a_in));
-        env.storage().instance().set(&RESERVE_B, &(reserve_b - amount_b_out));
-        
+        env.storage()
+            .instance()
+            .set(&RESERVE_A, &(reserve_a + amount_a_in));
+        env.storage()
+            .instance()
+            .set(&RESERVE_B, &(reserve_b - amount_b_out));
+
         amount_b_out
     }
 
@@ -240,28 +239,32 @@ impl AmmContract {
         min_amount_a_out: i128,
     ) -> i128 {
         user.require_auth();
-        
+
         if amount_b_in <= 0 {
             panic!("amount must be positive");
         }
-        
+
         let (reserve_a, reserve_b) = Self::get_reserves(env.clone());
-        
+
         if reserve_a == 0 || reserve_b == 0 {
             panic!("no liquidity");
         }
-        
+
         // Calculate output using constant product formula
         let amount_a_out = (amount_b_in * reserve_a) / (reserve_b + amount_b_in);
-        
+
         if amount_a_out < min_amount_a_out {
             panic!("slippage exceeded");
         }
-        
+
         // Update reserves
-        env.storage().instance().set(&RESERVE_A, &(reserve_a - amount_a_out));
-        env.storage().instance().set(&RESERVE_B, &(reserve_b + amount_b_in));
-        
+        env.storage()
+            .instance()
+            .set(&RESERVE_A, &(reserve_a - amount_a_out));
+        env.storage()
+            .instance()
+            .set(&RESERVE_B, &(reserve_b + amount_b_in));
+
         amount_a_out
     }
 
@@ -270,16 +273,15 @@ impl AmmContract {
         if x == 0 {
             return 0;
         }
-        
+
         let mut z = (x + 1) / 2;
         let mut y = x;
-        
+
         while z < y {
             y = z;
             z = (x / z + z) / 2;
         }
-        
+
         y
     }
 }
-

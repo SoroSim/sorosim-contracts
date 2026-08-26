@@ -18,37 +18,33 @@ impl NftContract {
     /// Mint a new NFT to the specified address
     pub fn mint(env: Env, to: Address) -> u64 {
         to.require_auth();
-        
+
         // Get next token ID
-        let token_id: u64 = env
-            .storage()
-            .instance()
-            .get(&TOKEN_COUNTER)
-            .unwrap_or(0);
-        
+        let token_id: u64 = env.storage().instance().get(&TOKEN_COUNTER).unwrap_or(0);
+
         // Store owner
         env.storage()
             .persistent()
             .set(&DataKey::Owner(token_id), &to);
-        
+
         // Increment counter
         env.storage()
             .instance()
             .set(&TOKEN_COUNTER, &(token_id + 1));
-        
+
         token_id
     }
 
     /// Transfer an NFT to another address
     pub fn transfer(env: Env, token_id: u64, from: Address, to: Address) {
         from.require_auth();
-        
+
         let owner = Self::owner_of(env.clone(), token_id);
-        
+
         if owner != from {
             panic!("not the owner");
         }
-        
+
         env.storage()
             .persistent()
             .set(&DataKey::Owner(token_id), &to);
@@ -64,10 +60,6 @@ impl NftContract {
 
     /// Get the total number of tokens minted
     pub fn total_supply(env: Env) -> u64 {
-        env.storage()
-            .instance()
-            .get(&TOKEN_COUNTER)
-            .unwrap_or(0)
+        env.storage().instance().get(&TOKEN_COUNTER).unwrap_or(0)
     }
 }
-

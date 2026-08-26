@@ -41,10 +41,12 @@ impl StorageContract {
         if env.storage().instance().has(&ADMIN) {
             panic!("already initialized");
         }
-        
+
         // Instance storage: shared contract-level data
         env.storage().instance().set(&ADMIN, &admin);
-        env.storage().instance().set(&INIT_TIME, &env.ledger().timestamp());
+        env.storage()
+            .instance()
+            .set(&INIT_TIME, &env.ledger().timestamp());
         env.storage().instance().set(&COUNTER, &0i128);
     }
 
@@ -76,10 +78,7 @@ impl StorageContract {
 
     /// Get initialization timestamp (instance storage)
     pub fn get_init_time(env: Env) -> u64 {
-        env.storage()
-            .instance()
-            .get(&INIT_TIME)
-            .unwrap_or(0)
+        env.storage().instance().get(&INIT_TIME).unwrap_or(0)
     }
 
     // ========== PERSISTENT STORAGE ==========
@@ -90,7 +89,7 @@ impl StorageContract {
     /// Set user balance (persistent storage)
     pub fn set_balance(env: Env, user: Address, amount: i128) {
         user.require_auth();
-        
+
         env.storage()
             .persistent()
             .set(&PersistentKey::Balance(user), &amount);
@@ -107,13 +106,13 @@ impl StorageContract {
     /// Set user data (persistent storage with struct)
     pub fn set_user_data(env: Env, user: Address, name: Symbol, score: i128, active: bool) {
         user.require_auth();
-        
+
         let data = UserData {
             name,
             score,
             active,
         };
-        
+
         env.storage()
             .persistent()
             .set(&PersistentKey::UserData(user), &data);
@@ -134,7 +133,7 @@ impl StorageContract {
     /// Remove user data (explicit deletion from persistent storage)
     pub fn remove_user_data(env: Env, user: Address) {
         user.require_auth();
-        
+
         env.storage()
             .persistent()
             .remove(&PersistentKey::UserData(user));
@@ -169,9 +168,7 @@ impl StorageContract {
 
     /// Set cache value (temporary storage)
     pub fn set_cache(env: Env, key: Symbol, value: i128) {
-        env.storage()
-            .temporary()
-            .set(&TempKey::Cache(key), &value);
+        env.storage().temporary().set(&TempKey::Cache(key), &value);
     }
 
     /// Get cache value (temporary storage)
@@ -184,9 +181,7 @@ impl StorageContract {
 
     /// Check if session exists (temporary storage)
     pub fn has_session(env: Env, user: Address) -> bool {
-        env.storage()
-            .temporary()
-            .has(&TempKey::Session(user))
+        env.storage().temporary().has(&TempKey::Session(user))
     }
 
     // ========== MIXED STORAGE OPERATIONS ==========
@@ -195,21 +190,22 @@ impl StorageContract {
     /// Complex operation using all three storage types
     pub fn process_transaction(env: Env, user: Address, amount: i128) {
         user.require_auth();
-        
+
         // 1. Increment global counter (instance storage)
         let tx_count = Self::increment_counter(env.clone());
-        
+
         // 2. Update user balance (persistent storage)
         let current_balance = Self::get_balance(env.clone(), user.clone());
-        env.storage()
-            .persistent()
-            .set(&PersistentKey::Balance(user.clone()), &(current_balance + amount));
-        
+        env.storage().persistent().set(
+            &PersistentKey::Balance(user.clone()),
+            &(current_balance + amount),
+        );
+
         // 3. Cache transaction info (temporary storage)
         env.storage()
             .temporary()
             .set(&TempKey::Cache(symbol_short!("LAST_TX")), &tx_count);
-        
+
         // 4. Update session (temporary storage)
         env.storage()
             .temporary()
@@ -221,8 +217,7 @@ impl StorageContract {
         let counter = Self::get_counter(env.clone());
         let balance = Self::get_balance(env.clone(), user.clone());
         let session = Self::get_session(env, user);
-        
+
         (counter, balance, session)
     }
 }
-

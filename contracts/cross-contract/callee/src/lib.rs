@@ -29,7 +29,7 @@ impl CalleeContract {
         if env.storage().instance().has(&ADMIN) {
             panic!("already initialized");
         }
-        
+
         env.storage().instance().set(&ADMIN, &admin);
         env.storage().instance().set(&COUNTER, &0i128);
     }
@@ -58,7 +58,7 @@ impl CalleeContract {
     /// Function requiring authentication
     pub fn set_balance(env: Env, user: Address, amount: i128) {
         user.require_auth();
-        
+
         env.storage()
             .persistent()
             .set(&DataKey::Balance(user), &amount);
@@ -80,14 +80,14 @@ impl CalleeContract {
             .instance()
             .get(&ADMIN)
             .unwrap_or_else(|| panic!("not initialized"));
-        
+
         (counter, admin)
     }
 
     /// Function returning a struct
     pub fn get_data(env: Env, caller: Address) -> CalleeData {
         let counter: i128 = env.storage().instance().get(&COUNTER).unwrap_or(0);
-        
+
         CalleeData {
             value: counter,
             caller,
@@ -102,18 +102,17 @@ impl CalleeContract {
     /// Admin-only function
     pub fn reset_counter(env: Env, admin: Address) {
         admin.require_auth();
-        
+
         let stored_admin: Address = env
             .storage()
             .instance()
             .get(&ADMIN)
             .unwrap_or_else(|| panic!("not initialized"));
-        
+
         if stored_admin != admin {
             panic!("not the admin");
         }
-        
+
         env.storage().instance().set(&COUNTER, &0i128);
     }
 }
-

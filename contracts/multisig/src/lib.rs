@@ -43,15 +43,15 @@ impl MultisigContract {
         if env.storage().instance().has(&OWNERS) {
             panic!("already initialized");
         }
-        
+
         if owners.is_empty() {
             panic!("owners cannot be empty");
         }
-        
+
         if threshold == 0 || threshold > owners.len() {
             panic!("invalid threshold");
         }
-        
+
         env.storage().instance().set(&OWNERS, &owners);
         env.storage().instance().set(&THRESHOLD, &threshold);
         env.storage().instance().set(&TX_COUNTER, &0u64);
@@ -60,23 +60,19 @@ impl MultisigContract {
     /// Propose a new transaction
     pub fn propose(env: Env, proposer: Address, to: Address, amount: i128) -> u64 {
         proposer.require_auth();
-        
+
         // Check if proposer is an owner
         if !Self::is_owner(env.clone(), proposer.clone()) {
             panic!("not an owner");
         }
-        
+
         // Get next transaction ID
-        let tx_id: u64 = env
-            .storage()
-            .instance()
-            .get(&TX_COUNTER)
-            .unwrap_or(0);
-        
+        let tx_id: u64 = env.storage().instance().get(&TX_COUNTER).unwrap_or(0);
+
         // Create transaction with proposer as first approval
         let mut approvals = Vec::new(&env);
         approvals.push_back(proposer.clone());
-        
+
         let transaction = Transaction {
             id: tx_id,
             proposer,
@@ -85,17 +81,15 @@ impl MultisigContract {
             approvals,
             status: TxStatus::Pending,
         };
-        
+
         // Store transaction
         env.storage()
             .persistent()
             .set(&DataKey::Transaction(tx_id), &transaction);
-        
+
         // Increment counter
-        env.storage()
-            .instance()
-            .set(&TX_COUNTER, &(tx_id + 1));
-        
+        env.storage().instance().set(&TX_COUNTER, &(tx_id + 1));
+
         tx_id
     }
 
@@ -130,7 +124,7 @@ impl MultisigContract {
             .instance()
             .get(&OWNERS)
             .unwrap_or_else(|| panic!("not initialized"));
-        
+
         for owner in owners.iter() {
             if owner == address {
                 return true;
@@ -141,43 +135,40 @@ impl MultisigContract {
 
     /// Get total number of transactions
     pub fn total_transactions(env: Env) -> u64 {
-        env.storage()
-            .instance()
-            .get(&TX_COUNTER)
-            .unwrap_or(0)
+        env.storage().instance().get(&TX_COUNTER).unwrap_or(0)
     }
 
     /// Approve a pending transaction
     pub fn approve(env: Env, tx_id: u64, approver: Address) {
         approver.require_auth();
-        
+
         // Check if approver is an owner
         if !Self::is_owner(env.clone(), approver.clone()) {
             panic!("not an owner");
         }
-        
+
         // Get transaction
         let mut transaction: Transaction = env
             .storage()
             .persistent()
             .get(&DataKey::Transaction(tx_id))
             .unwrap_or_else(|| panic!("transaction does not exist"));
-        
+
         // Check status
         if transaction.status != TxStatus::Pending {
             panic!("transaction not pending");
         }
-        
+
         // Check if already approved
         for approval in transaction.approvals.iter() {
             if approval == approver {
                 panic!("already approved");
             }
         }
-        
+
         // Add approval
         transaction.approvals.push_back(approver);
-        
+
         // Store updated transaction
         env.storage()
             .persistent()
@@ -192,27 +183,27 @@ impl MultisigContract {
             .persistent()
             .get(&DataKey::Transaction(tx_id))
             .unwrap_or_else(|| panic!("transaction does not exist"));
-        
+
         // Check status
         if transaction.status != TxStatus::Pending {
             panic!("transaction not pending");
         }
-        
+
         // Get threshold
         let threshold: u32 = env
             .storage()
             .instance()
             .get(&THRESHOLD)
             .unwrap_or_else(|| panic!("not initialized"));
-        
+
         // Check if threshold is met
         if transaction.approvals.len() < threshold {
             panic!("threshold not met");
         }
-        
+
         // Mark as executed
         transaction.status = TxStatus::Executed;
-        
+
         // Store updated transaction
         env.storage()
             .persistent()
@@ -222,27 +213,27 @@ impl MultisigContract {
     /// Cancel a pending transaction (only proposer can cancel)
     pub fn cancel(env: Env, tx_id: u64, canceller: Address) {
         canceller.require_auth();
-        
+
         // Get transaction
         let mut transaction: Transaction = env
             .storage()
             .persistent()
             .get(&DataKey::Transaction(tx_id))
             .unwrap_or_else(|| panic!("transaction does not exist"));
-        
+
         // Check status
         if transaction.status != TxStatus::Pending {
             panic!("transaction not pending");
         }
-        
+
         // Check authorization (only proposer can cancel)
         if transaction.proposer != canceller {
             panic!("not the proposer");
         }
-        
+
         // Mark as cancelled
         transaction.status = TxStatus::Cancelled;
-        
+
         // Store updated transaction
         env.storage()
             .persistent()
@@ -256,7 +247,7 @@ impl MultisigContract {
             .persistent()
             .get(&DataKey::Transaction(tx_id))
             .unwrap_or_else(|| panic!("transaction does not exist"));
-        
+
         transaction.approvals.len()
     }
 
@@ -267,14 +258,13 @@ impl MultisigContract {
             .persistent()
             .get(&DataKey::Transaction(tx_id))
             .unwrap_or_else(|| panic!("transaction does not exist"));
-        
+
         let threshold: u32 = env
             .storage()
             .instance()
             .get(&THRESHOLD)
             .unwrap_or_else(|| panic!("not initialized"));
-        
+
         transaction.approvals.len() >= threshold
     }
 }
-
