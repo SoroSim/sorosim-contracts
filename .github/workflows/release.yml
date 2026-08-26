@@ -1,0 +1,127 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      version: ${{ steps.get_version.outputs.version }}
+    steps:
+      - name: Get version from tag
+        id: get_version
+        run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ steps.get_version.outputs.version }}
+          draft: false
+          prerelease: false
+          body: |
+            ## SoroSim Contracts ${{ steps.get_version.outputs.version }}
+            
+            Compiled WASM contracts for the Soroban blockchain.
+            
+            ### Contracts Included
+            - counter - Simple counter contract
+            - token - Fungible token with allowances
+            - nft - Non-fungible token
+            - voting - Proposal voting system
+            - escrow - Time-locked escrow
+            - multisig - Multi-signature wallet
+            - oracle - Mock price oracle
+            - amm - Constant-product AMM
+            - auth - Authorization patterns
+            - events - Event emission examples
+            - cross-caller & cross-callee - Cross-contract invocation
+            - storage - Storage types demonstration
+            
+            ### Installation
+            Download the WASM files and deploy to Soroban using:
+            ```bash
+            soroban contract deploy --wasm <contract>.wasm
+            ```
+
+  build-and-upload:
+    name: Build and Upload WASM
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Build all contracts
+        run: cargo build --target wasm32-unknown-unknown --release
+
+      - name: Install wasm-opt
+        run: |
+          wget https://github.com/WebAssembly/binaryen/releases/download/version_116/binaryen-version_116-x86_64-linux.tar.gz
+          tar -xzf binaryen-version_116-x86_64-linux.tar.gz
+          sudo cp binaryen-version_116/bin/wasm-opt /usr/local/bin/
+
+      - name: Optimize WASM files
+        run: |
+          cd target/wasm32-unknown-unknown/release
+          for file in *.wasm; do
+            wasm-opt -Oz "$file" -o "$file.opt"
+            mv "$file.opt" "$file"
+            echo "Optimized $file"
+          done
+
+      - name: Create release archive
+        run: |
+          cd target/wasm32-unknown-unknown/release
+          tar -czf sorosim-contracts-${{ needs.create-release.outputs.version }}.tar.gz *.wasm
+          sha256sum *.wasm > checksums.txt
+          sha256sum sorosim-contracts-${{ needs.create-release.outputs.version }}.tar.gz >> checksums.txt
+
+      - name: Upload release archive
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./target/wasm32-unknown-unknown/release/sorosim-contracts-${{ needs.create-release.outputs.version }}.tar.gz
+          asset_name: sorosim-contracts-${{ needs.create-release.outputs.version }}.tar.gz
+          asset_content_type: application/gzip
+
+      - name: Upload checksums
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./target/wasm32-unknown-unknown/release/checksums.txt
+          asset_name: checksums.txt
+          asset_content_type: text/plain
+
+      - name: Upload individual WASM files
+        run: |
+          cd target/wasm32-unknown-unknown/release
+          for file in *.wasm; do
+            echo "Uploading $file..."
+            curl -X POST \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Content-Type: application/wasm" \
+              --data-binary "@$file" \
+              "${{ needs.create-release.outputs.upload_url }}?name=$file"
+          done
