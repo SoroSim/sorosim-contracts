@@ -1,20 +1,73 @@
+//! # Token Contract
+//!
+//! A fungible token implementation with transfer and allowance functionality.
+//!
+//! ## Features
+//! - Mint tokens to addresses
+//! - Transfer tokens between addresses
+//! - Approve spending allowances
+//! - Transfer tokens on behalf of another address (transferFrom)
+//! - Query balances and allowances
+//!
+//! ## Storage
+//! - Uses persistent storage for balances (Address -> i128)
+//! - Uses persistent storage for allowances (AllowanceKey -> i128)
+//!
+//! ## Authorization
+//! - `mint`: Requires recipient authorization
+//! - `transfer`: Requires sender authorization
+//! - `approve`: Requires owner authorization
+//! - `transfer_from`: Requires spender authorization
+//!
+//! ## Example Usage
+//! ```ignore
+//! // Mint tokens
+//! client.mint(&user, &1000);
+//!
+//! // Transfer tokens
+//! client.transfer(&alice, &bob, &100);
+//!
+//! // Approve allowance
+//! client.approve(&owner, &spender, &500);
+//!
+//! // Transfer using allowance
+//! client.transfer_from(&spender, &owner, &recipient, &100);
+//! ```
+
 #![no_std]
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env};
 
-/// Storage key for allowances: (owner, spender)
+/// Storage key for allowances mapping (owner, spender) to amount.
 #[contracttype]
 #[derive(Clone)]
 pub struct AllowanceKey {
+    /// The address that owns the tokens
     pub owner: Address,
+    /// The address that is allowed to spend the tokens
     pub spender: Address,
 }
 
+/// Fungible token contract implementing basic ERC-20-like functionality.
 #[contract]
 pub struct TokenContract;
 
 #[contractimpl]
 impl TokenContract {
-    /// Mint new tokens to a recipient address
+    /// Mints new tokens to a recipient address.
+    ///
+    /// The minted tokens are added to the recipient's existing balance.
+    ///
+    /// # Arguments
+    /// * `to` - The address to receive the minted tokens
+    /// * `amount` - The amount of tokens to mint
+    ///
+    /// # Authorization
+    /// Requires authentication from the `to` address.
+    ///
+    /// # Example
+    /// ```ignore
+    /// client.mint(&user_address, &1000); // Mints 1000 tokens to user
+    /// ```
     pub fn mint(env: Env, to: Address, amount: i128) {
         to.require_auth();
 
@@ -22,7 +75,23 @@ impl TokenContract {
         env.storage().persistent().set(&to, &(balance + amount));
     }
 
-    /// Transfer tokens from one address to another
+    /// Transfers tokens from one address to another.
+    ///
+    /// # Arguments
+    /// * `from` - The address sending tokens
+    /// * `to` - The address receiving tokens
+    /// * `amount` - The amount of tokens to transfer
+    ///
+    /// # Authorization
+    /// Requires authentication from the `from` address.
+    ///
+    /// # Panics
+    /// Panics with "insufficient balance" if sender's balance is less than the amount.
+    ///
+    /// # Example
+    /// ```ignore
+    /// client.transfer(&alice, &bob, &100); // Alice sends 100 tokens to Bob
+    /// ```
     pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
         from.require_auth();
 
@@ -39,12 +108,39 @@ impl TokenContract {
         env.storage().persistent().set(&to, &(to_balance + amount));
     }
 
-    /// Get the token balance of an address
+    /// Returns the token balance of an address.
+    ///
+    /// # Arguments
+    /// * `account` - The address to query
+    ///
+    /// # Returns
+    /// The token balance, or 0 if the address has no balance.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let balance = client.balance(&user); // Returns user's token balance
+    /// ```
     pub fn balance(env: Env, account: Address) -> i128 {
         env.storage().persistent().get(&account).unwrap_or(0)
     }
 
-    /// Approve a spender to withdraw up to a specified amount from the owner's account
+    /// Approves a spender to withdraw tokens on behalf of the owner.
+    ///
+    /// Sets the allowance for `spender` to withdraw up to `amount` tokens
+    /// from `owner`'s account.
+    ///
+    /// # Arguments
+    /// * `owner` - The address owning the tokens
+    /// * `spender` - The address allowed to spend the tokens
+    /// * `amount` - The maximum amount the spender can withdraw
+    ///
+    /// # Authorization
+    /// Requires authentication from the `owner` address.
+    ///
+    /// # Example
+    /// ```ignore
+    /// client.approve(&owner, &spender, &500); // Allow spender to use 500 tokens
+    /// ```
     pub fn approve(env: Env, owner: Address, spender: Address, amount: i128) {
         owner.require_auth();
 
