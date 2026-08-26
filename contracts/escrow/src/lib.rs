@@ -176,3 +176,252 @@ impl EscrowContract {
     }
 }
 
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use soroban_sdk::{testutils::Address as _, Address, Env};
+
+    #[test]
+    fn test_deposit() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+        
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+
+        let depositor = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        env.mock_all_auths();
+
+        let release_time = 200;
+        let escrow_id = client.deposit(&depositor, &beneficiary, &1000, &release_time);
+
+        assert_eq!(escrow_id, 0);
+        assert_eq!(client.total_escrows(), 1);
+
+        let escrow = client.get_escrow(&escrow_id);
+        assert_eq!(escrow.amount, 1000);
+        assert_eq!(escrow.release_time, 200);
+        assert_eq!(escrow.status, EscrowStatus::Active);
+    }
+
+    #[test]
+    #[should_panic(expected = "amount must be positive")]
+    fn test_deposit_zero_amount() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+        
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+
+        let depositor = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        env.mock_all_auths();
+
+        client.deposit(&depositor, &beneficiary, &0, &200); // Should panic
+    }
+
+    #[test]
+    #[should_panic(expected = "release time must be in the future")]
+    fn test_deposit_past_release_time() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+        
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+
+        let depositor = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        env.mock_all_auths();
+
+        client.deposit(&depositor, &beneficiary, &1000, &50); // Should panic
+    }
+
+    #[test]
+    fn test_release() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+        
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+
+        let depositor = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        env.mock_all_auths();
+
+        let release_time = 200;
+        let escrow_id = client.deposit(&depositor, &beneficiary, &1000, &release_time);
+
+        // Move time forward
+        env.ledger().with_mut(|li| li.timestamp = 201);
+
+        client.release(&escrow_id);
+
+        let escrow = client.get_escrow(&escrow_id);
+        assert_eq!(escrow.status, EscrowStatus::Released);
+    }
+
+    #[test]
+    #[should_panic(expected = "release time not reached")]
+    fn test_release_before_time() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+        
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+
+        let depositor = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        env.mock_all_auths();
+
+        let release_time = 200;
+        let escrow_id = client.deposit(&depositor, &beneficiary, &1000, &release_time);
+
+        client.release(&escrow_id); // Should panic
+    }
+
+    #[test]
+    fn test_refund() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+        
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+
+        let depositor = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        env.mock_all_auths();
+
+        let release_time = 200;
+        let escrow_id = client.deposit(&depositor, &beneficiary, &1000, &release_time);
+
+        // Refund before release time
+        client.refund(&escrow_id, &depositor);
+
+        let escrow = client.get_escrow(&escrow_id);
+        assert_eq!(escrow.status, EscrowStatus::Refunded);
+    }
+
+    #[test]
+    #[should_panic(expected = "release time reached, use release instead")]
+    fn test_refund_after_release_time() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+        
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+
+        let depositor = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        env.mock_all_auths();
+
+        let release_time = 200;
+        let escrow_id = client.deposit(&depositor, &beneficiary, &1000, &release_time);
+
+        // Move past release time
+        env.ledger().with_mut(|li| li.timestamp = 201);
+
+        client.refund(&escrow_id, &depositor); // Should panic
+    }
+
+    #[test]
+    #[should_panic(expected = "escrow not active")]
+    fn test_release_after_refund() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+        
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+
+        let depositor = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        env.mock_all_auths();
+
+        let release_time = 200;
+        let escrow_id = client.deposit(&depositor, &beneficiary, &1000, &release_time);
+
+        client.refund(&escrow_id, &depositor);
+
+        env.ledger().with_mut(|li| li.timestamp = 201);
+        client.release(&escrow_id); // Should panic
+    }
+
+    #[test]
+    fn test_can_release() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+        
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+
+        let depositor = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        env.mock_all_auths();
+
+        let release_time = 200;
+        let escrow_id = client.deposit(&depositor, &beneficiary, &1000, &release_time);
+
+        assert_eq!(client.can_release(&escrow_id), false);
+
+        env.ledger().with_mut(|li| li.timestamp = 200);
+        assert_eq!(client.can_release(&escrow_id), true);
+
+        client.release(&escrow_id);
+        assert_eq!(client.can_release(&escrow_id), false);
+    }
+
+    #[test]
+    fn test_multiple_escrows() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+        
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+
+        let depositor = Address::generate(&env);
+        let beneficiary1 = Address::generate(&env);
+        let beneficiary2 = Address::generate(&env);
+        env.mock_all_auths();
+
+        let escrow_id1 = client.deposit(&depositor, &beneficiary1, &1000, &200);
+        let escrow_id2 = client.deposit(&depositor, &beneficiary2, &2000, &300);
+
+        assert_eq!(escrow_id1, 0);
+        assert_eq!(escrow_id2, 1);
+        assert_eq!(client.total_escrows(), 2);
+
+        let escrow1 = client.get_escrow(&escrow_id1);
+        let escrow2 = client.get_escrow(&escrow_id2);
+
+        assert_eq!(escrow1.amount, 1000);
+        assert_eq!(escrow2.amount, 2000);
+    }
+
+    #[test]
+    fn test_complex_scenario() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+        
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+
+        let depositor = Address::generate(&env);
+        let beneficiary1 = Address::generate(&env);
+        let beneficiary2 = Address::generate(&env);
+        env.mock_all_auths();
+
+        // Create two escrows
+        let escrow_id1 = client.deposit(&depositor, &beneficiary1, &1000, &200);
+        let escrow_id2 = client.deposit(&depositor, &beneficiary2, &2000, &300);
+
+        // Refund first escrow
+        client.refund(&escrow_id1, &depositor);
+        assert_eq!(client.get_escrow(&escrow_id1).status, EscrowStatus::Refunded);
+
+        // Release second escrow
+        env.ledger().with_mut(|li| li.timestamp = 301);
+        client.release(&escrow_id2);
+        assert_eq!(client.get_escrow(&escrow_id2).status, EscrowStatus::Released);
+    }
+}

@@ -216,3 +216,272 @@ impl VotingContract {
     }
 }
 
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use soroban_sdk::{testutils::Address as _, Address, Env, String};
+
+    #[test]
+    fn test_create_proposal() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, VotingContract);
+        let client = VotingContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        env.mock_all_auths();
+
+        let deadline = env.ledger().timestamp() + 1000;
+        let proposal_id = client.create_proposal(&creator, &String::from_str(&env, "Test"), &deadline);
+
+        assert_eq!(proposal_id, 0);
+        assert_eq!(client.total_proposals(), 1);
+
+        let proposal = client.get_proposal(&proposal_id);
+        assert_eq!(proposal.id, 0);
+        assert_eq!(proposal.yes_votes, 0);
+        assert_eq!(proposal.no_votes, 0);
+        assert_eq!(proposal.finalized, false);
+    }
+
+    #[test]
+    fn test_vote_yes() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, VotingContract);
+        let client = VotingContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        let voter = Address::generate(&env);
+        env.mock_all_auths();
+
+        let deadline = env.ledger().timestamp() + 1000;
+        let proposal_id = client.create_proposal(&creator, &String::from_str(&env, "Test"), &deadline);
+
+        client.vote(&proposal_id, &voter, &true);
+
+        let (yes, no) = client.get_tally(&proposal_id);
+        assert_eq!(yes, 1);
+        assert_eq!(no, 0);
+    }
+
+    #[test]
+    fn test_vote_no() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, VotingContract);
+        let client = VotingContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        let voter = Address::generate(&env);
+        env.mock_all_auths();
+
+        let deadline = env.ledger().timestamp() + 1000;
+        let proposal_id = client.create_proposal(&creator, &String::from_str(&env, "Test"), &deadline);
+
+        client.vote(&proposal_id, &voter, &false);
+
+        let (yes, no) = client.get_tally(&proposal_id);
+        assert_eq!(yes, 0);
+        assert_eq!(no, 1);
+    }
+
+    #[test]
+    fn test_multiple_votes() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, VotingContract);
+        let client = VotingContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        env.mock_all_auths();
+
+        let deadline = env.ledger().timestamp() + 1000;
+        let proposal_id = client.create_proposal(&creator, &String::from_str(&env, "Test"), &deadline);
+
+        // Multiple voters
+        for _ in 0..3 {
+            let voter = Address::generate(&env);
+            client.vote(&proposal_id, &voter, &true);
+        }
+
+        for _ in 0..2 {
+            let voter = Address::generate(&env);
+            client.vote(&proposal_id, &voter, &false);
+        }
+
+        let (yes, no) = client.get_tally(&proposal_id);
+        assert_eq!(yes, 3);
+        assert_eq!(no, 2);
+    }
+
+    #[test]
+    #[should_panic(expected = "already voted")]
+    fn test_double_vote() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, VotingContract);
+        let client = VotingContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        let voter = Address::generate(&env);
+        env.mock_all_auths();
+
+        let deadline = env.ledger().timestamp() + 1000;
+        let proposal_id = client.create_proposal(&creator, &String::from_str(&env, "Test"), &deadline);
+
+        client.vote(&proposal_id, &voter, &true);
+        client.vote(&proposal_id, &voter, &false); // Should panic
+    }
+
+    #[test]
+    fn test_has_voted() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, VotingContract);
+        let client = VotingContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        let voter = Address::generate(&env);
+        let non_voter = Address::generate(&env);
+        env.mock_all_auths();
+
+        let deadline = env.ledger().timestamp() + 1000;
+        let proposal_id = client.create_proposal(&creator, &String::from_str(&env, "Test"), &deadline);
+
+        assert_eq!(client.has_voted(&proposal_id, &voter), false);
+
+        client.vote(&proposal_id, &voter, &true);
+
+        assert_eq!(client.has_voted(&proposal_id, &voter), true);
+        assert_eq!(client.has_voted(&proposal_id, &non_voter), false);
+    }
+
+    #[test]
+    fn test_finalize_passed() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+        
+        let contract_id = env.register_contract(None, VotingContract);
+        let client = VotingContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        env.mock_all_auths();
+
+        let deadline = 200;
+        let proposal_id = client.create_proposal(&creator, &String::from_str(&env, "Test"), &deadline);
+
+        // Vote yes > no
+        for _ in 0..3 {
+            let voter = Address::generate(&env);
+            client.vote(&proposal_id, &voter, &true);
+        }
+        for _ in 0..1 {
+            let voter = Address::generate(&env);
+            client.vote(&proposal_id, &voter, &false);
+        }
+
+        // Move time forward
+        env.ledger().with_mut(|li| li.timestamp = 201);
+
+        client.finalize(&proposal_id);
+
+        assert_eq!(client.is_finalized(&proposal_id), true);
+        assert_eq!(client.get_status(&proposal_id), ProposalStatus::Passed);
+    }
+
+    #[test]
+    fn test_finalize_rejected() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+        
+        let contract_id = env.register_contract(None, VotingContract);
+        let client = VotingContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        env.mock_all_auths();
+
+        let deadline = 200;
+        let proposal_id = client.create_proposal(&creator, &String::from_str(&env, "Test"), &deadline);
+
+        // Vote no > yes
+        for _ in 0..1 {
+            let voter = Address::generate(&env);
+            client.vote(&proposal_id, &voter, &true);
+        }
+        for _ in 0..3 {
+            let voter = Address::generate(&env);
+            client.vote(&proposal_id, &voter, &false);
+        }
+
+        env.ledger().with_mut(|li| li.timestamp = 201);
+        client.finalize(&proposal_id);
+
+        assert_eq!(client.get_status(&proposal_id), ProposalStatus::Rejected);
+    }
+
+    #[test]
+    fn test_finalize_tied() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+        
+        let contract_id = env.register_contract(None, VotingContract);
+        let client = VotingContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        env.mock_all_auths();
+
+        let deadline = 200;
+        let proposal_id = client.create_proposal(&creator, &String::from_str(&env, "Test"), &deadline);
+
+        // Equal votes
+        for _ in 0..2 {
+            let voter = Address::generate(&env);
+            client.vote(&proposal_id, &voter, &true);
+        }
+        for _ in 0..2 {
+            let voter = Address::generate(&env);
+            client.vote(&proposal_id, &voter, &false);
+        }
+
+        env.ledger().with_mut(|li| li.timestamp = 201);
+        client.finalize(&proposal_id);
+
+        assert_eq!(client.get_status(&proposal_id), ProposalStatus::Tied);
+    }
+
+    #[test]
+    #[should_panic(expected = "voting period not ended")]
+    fn test_finalize_before_deadline() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+        
+        let contract_id = env.register_contract(None, VotingContract);
+        let client = VotingContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        env.mock_all_auths();
+
+        let deadline = 200;
+        let proposal_id = client.create_proposal(&creator, &String::from_str(&env, "Test"), &deadline);
+
+        client.finalize(&proposal_id); // Should panic
+    }
+
+    #[test]
+    #[should_panic(expected = "proposal already finalized")]
+    fn test_vote_after_finalize() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+        
+        let contract_id = env.register_contract(None, VotingContract);
+        let client = VotingContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        let voter = Address::generate(&env);
+        env.mock_all_auths();
+
+        let deadline = 200;
+        let proposal_id = client.create_proposal(&creator, &String::from_str(&env, "Test"), &deadline);
+
+        env.ledger().with_mut(|li| li.timestamp = 201);
+        client.finalize(&proposal_id);
+
+        client.vote(&proposal_id, &voter, &true); // Should panic
+    }
+}
