@@ -162,6 +162,38 @@ impl TokenContract {
         env.storage().persistent().get(&key).unwrap_or(0)
     }
 
+    /// Burns (permanently removes) tokens from a holder's balance.
+    ///
+    /// The burned tokens are removed from circulation and cannot be recovered.
+    ///
+    /// # Arguments
+    /// * `from` - The address whose tokens will be burned
+    /// * `amount` - The amount of tokens to burn
+    ///
+    /// # Authorization
+    /// Requires authentication from the `from` address.
+    ///
+    /// # Panics
+    /// Panics with "insufficient balance" if the holder's balance is less than the amount.
+    ///
+    /// # Example
+    /// ```ignore
+    /// client.burn(&holder, &100); // Burns 100 tokens from holder's balance
+    /// ```
+    pub fn burn(env: Env, from: Address, amount: i128) {
+        from.require_auth();
+
+        let balance = Self::balance(env.clone(), from.clone());
+
+        if balance < amount {
+            panic!("insufficient balance");
+        }
+
+        env.storage()
+            .persistent()
+            .set(&from, &(balance - amount));
+    }
+
     /// Transfer tokens on behalf of another address using allowance
     pub fn transfer_from(env: Env, spender: Address, from: Address, to: Address, amount: i128) {
         spender.require_auth();
