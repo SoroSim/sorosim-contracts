@@ -115,7 +115,7 @@ impl CounterContract {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::Env;
+    use soroban_sdk::{testutils::Address as _, Address, Env};
 
     #[test]
     fn test_initial_value() {
@@ -230,5 +230,83 @@ mod test {
 
         // Continue incrementing
         assert_eq!(client.increment(), 4);
+    }
+
+    #[test]
+    fn test_reset() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, CounterContract);
+        let client = CounterContractClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+        env.mock_all_auths();
+
+        // Increment counter
+        client.increment();
+        client.increment();
+        client.increment();
+        assert_eq!(client.get(), 3);
+
+        // Reset counter
+        client.reset(&user);
+        assert_eq!(client.get(), 0);
+    }
+
+    #[test]
+    fn test_reset_from_negative() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, CounterContract);
+        let client = CounterContractClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+        env.mock_all_auths();
+
+        // Decrement to negative
+        client.decrement();
+        client.decrement();
+        client.decrement();
+        assert_eq!(client.get(), -3);
+
+        // Reset should set to 0
+        client.reset(&user);
+        assert_eq!(client.get(), 0);
+    }
+
+    #[test]
+    fn test_reset_then_increment() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, CounterContract);
+        let client = CounterContractClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+        env.mock_all_auths();
+
+        // Set counter to some value
+        client.increment();
+        client.increment();
+        assert_eq!(client.get(), 2);
+
+        // Reset
+        client.reset(&user);
+        assert_eq!(client.get(), 0);
+
+        // Should be able to increment after reset
+        assert_eq!(client.increment(), 1);
+        assert_eq!(client.get(), 1);
+    }
+
+    #[test]
+    fn test_reset_initial_state() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, CounterContract);
+        let client = CounterContractClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+        env.mock_all_auths();
+
+        // Reset when counter is already 0
+        assert_eq!(client.get(), 0);
+        client.reset(&user);
+        assert_eq!(client.get(), 0);
     }
 }
