@@ -143,6 +143,50 @@ impl EscrowContract {
             .set(&DataKey::Escrow(escrow_id), &escrow);
     }
 
+    /// Partial refund to depositor before release time
+    pub fn partial_refund(env: Env, escrow_id: u64, depositor: Address, amount: i128) {
+        depositor.require_auth();
+
+        // Get escrow
+        let mut escrow: Escrow = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Escrow(escrow_id))
+            .unwrap_or_else(|| panic!("escrow does not exist"));
+
+        // Check status
+        if escrow.status != EscrowStatus::Active {
+            panic!("escrow not active");
+        }
+
+        // Check authorization
+        if escrow.depositor != depositor {
+            panic!("not the depositor");
+        }
+
+        // Check time (can only refund before release time)
+        if env.ledger().timestamp() >= escrow.release_time {
+            panic!("release time reached, use release instead");
+        }
+
+        // Validate amount
+        if amount <= 0 {
+            panic!("amount must be positive");
+        }
+
+        if amount > escrow.amount {
+            panic!("amount exceeds remaining balance");
+        }
+
+        // Reduce escrow amount
+        escrow.amount -= amount;
+
+        // Store updated escrow
+        env.storage()
+            .persistent()
+            .set(&DataKey::Escrow(escrow_id), &escrow);
+    }
+
     /// Get escrow details
     pub fn get_escrow(env: Env, escrow_id: u64) -> Escrow {
         env.storage()
