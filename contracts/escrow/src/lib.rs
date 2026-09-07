@@ -465,4 +465,191 @@ mod test {
             EscrowStatus::Released
         );
     }
+
+    #[test]
+    fn test_partial_refund() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+
+        let depositor = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        env.mock_all_auths();
+
+        let release_time = 200;
+        let escrow_id = client.deposit(&depositor, &beneficiary, &1000, &release_time);
+
+        // Partial refund
+        client.partial_refund(&escrow_id, &depositor, &300);
+
+        let escrow = client.get_escrow(&escrow_id);
+        assert_eq!(escrow.amount, 700);
+        assert_eq!(escrow.status, EscrowStatus::Active);
+    }
+
+    #[test]
+    fn test_multiple_partial_refunds() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+
+        let depositor = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        env.mock_all_auths();
+
+        let release_time = 200;
+        let escrow_id = client.deposit(&depositor, &beneficiary, &1000, &release_time);
+
+        // Multiple partial refunds
+        client.partial_refund(&escrow_id, &depositor, &200);
+        assert_eq!(client.get_escrow(&escrow_id).amount, 800);
+
+        client.partial_refund(&escrow_id, &depositor, &300);
+        assert_eq!(client.get_escrow(&escrow_id).amount, 500);
+
+        client.partial_refund(&escrow_id, &depositor, &100);
+        assert_eq!(client.get_escrow(&escrow_id).amount, 400);
+    }
+
+    #[test]
+    #[should_panic(expected = "amount exceeds remaining balance")]
+    fn test_partial_refund_exceeds_balance() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+
+        let depositor = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        env.mock_all_auths();
+
+        let release_time = 200;
+        let escrow_id = client.deposit(&depositor, &beneficiary, &1000, &release_time);
+
+        // Try to refund more than available
+        client.partial_refund(&escrow_id, &depositor, &1500); // Should panic
+    }
+
+    #[test]
+    #[should_panic(expected = "amount must be positive")]
+    fn test_partial_refund_zero_amount() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+
+        let depositor = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        env.mock_all_auths();
+
+        let release_time = 200;
+        let escrow_id = client.deposit(&depositor, &beneficiary, &1000, &release_time);
+
+        // Try to refund zero
+        client.partial_refund(&escrow_id, &depositor, &0); // Should panic
+    }
+
+    #[test]
+    #[should_panic(expected = "amount must be positive")]
+    fn test_partial_refund_negative_amount() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+
+        let depositor = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        env.mock_all_auths();
+
+        let release_time = 200;
+        let escrow_id = client.deposit(&depositor, &beneficiary, &1000, &release_time);
+
+        // Try to refund negative amount
+        client.partial_refund(&escrow_id, &depositor, &-100); // Should panic
+    }
+
+    #[test]
+    #[should_panic(expected = "release time reached, use release instead")]
+    fn test_partial_refund_after_deadline() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+
+        let depositor = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        env.mock_all_auths();
+
+        let release_time = 200;
+        let escrow_id = client.deposit(&depositor, &beneficiary, &1000, &release_time);
+
+        // Move past release time
+        env.ledger().with_mut(|li| li.timestamp = 201);
+
+        // Try to partial refund after deadline
+        client.partial_refund(&escrow_id, &depositor, &300); // Should panic
+    }
+
+    #[test]
+    fn test_partial_refund_then_release() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+
+        let depositor = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        env.mock_all_auths();
+
+        let release_time = 200;
+        let escrow_id = client.deposit(&depositor, &beneficiary, &1000, &release_time);
+
+        // Partial refund
+        client.partial_refund(&escrow_id, &depositor, &400);
+        assert_eq!(client.get_escrow(&escrow_id).amount, 600);
+
+        // Move time forward and release remaining
+        env.ledger().with_mut(|li| li.timestamp = 201);
+        client.release(&escrow_id);
+
+        let escrow = client.get_escrow(&escrow_id);
+        assert_eq!(escrow.status, EscrowStatus::Released);
+        assert_eq!(escrow.amount, 600);
+    }
+
+    #[test]
+    fn test_partial_refund_then_full_refund() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+
+        let contract_id = env.register_contract(None, EscrowContract);
+        let client = EscrowContractClient::new(&env, &contract_id);
+
+        let depositor = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        env.mock_all_auths();
+
+        let release_time = 200;
+        let escrow_id = client.deposit(&depositor, &beneficiary, &1000, &release_time);
+
+        // Partial refund
+        client.partial_refund(&escrow_id, &depositor, &400);
+        assert_eq!(client.get_escrow(&escrow_id).amount, 600);
+
+        // Full refund of remaining
+        client.refund(&escrow_id, &depositor);
+
+        let escrow = client.get_escrow(&escrow_id);
+        assert_eq!(escrow.status, EscrowStatus::Refunded);
+        assert_eq!(escrow.amount, 600);
+    }
 }
