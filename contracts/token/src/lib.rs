@@ -492,4 +492,96 @@ mod test {
         assert_eq!(client.balance(&bob), 550);
         assert_eq!(client.allowance(&bob, &charlie), 150);
     }
+
+    #[test]
+    fn test_burn() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, TokenContract);
+        let client = TokenContractClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+        env.mock_all_auths();
+
+        // Mint and burn
+        client.mint(&user, &1000);
+        assert_eq!(client.balance(&user), 1000);
+
+        client.burn(&user, &300);
+        assert_eq!(client.balance(&user), 700);
+    }
+
+    #[test]
+    fn test_burn_full_balance() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, TokenContract);
+        let client = TokenContractClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+        env.mock_all_auths();
+
+        // Burn entire balance
+        client.mint(&user, &1000);
+        client.burn(&user, &1000);
+        assert_eq!(client.balance(&user), 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "insufficient balance")]
+    fn test_burn_insufficient_balance() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, TokenContract);
+        let client = TokenContractClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+        env.mock_all_auths();
+
+        // Try to burn more than balance
+        client.mint(&user, &100);
+        client.burn(&user, &200);
+    }
+
+    #[test]
+    fn test_burn_multiple_times() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, TokenContract);
+        let client = TokenContractClient::new(&env, &contract_id);
+
+        let user = Address::generate(&env);
+        env.mock_all_auths();
+
+        // Multiple burns
+        client.mint(&user, &1000);
+        client.burn(&user, &100);
+        assert_eq!(client.balance(&user), 900);
+
+        client.burn(&user, &200);
+        assert_eq!(client.balance(&user), 700);
+
+        client.burn(&user, &300);
+        assert_eq!(client.balance(&user), 400);
+    }
+
+    #[test]
+    fn test_burn_after_transfer() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, TokenContract);
+        let client = TokenContractClient::new(&env, &contract_id);
+
+        let alice = Address::generate(&env);
+        let bob = Address::generate(&env);
+        env.mock_all_auths();
+
+        // Transfer then burn
+        client.mint(&alice, &1000);
+        client.transfer(&alice, &bob, &400);
+
+        assert_eq!(client.balance(&alice), 600);
+        assert_eq!(client.balance(&bob), 400);
+
+        client.burn(&alice, &200);
+        client.burn(&bob, &100);
+
+        assert_eq!(client.balance(&alice), 400);
+        assert_eq!(client.balance(&bob), 300);
+    }
 }
