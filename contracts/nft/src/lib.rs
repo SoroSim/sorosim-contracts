@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, Symbol};
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol};
 
 const TOKEN_COUNTER: Symbol = symbol_short!("COUNTER");
 
@@ -8,6 +8,7 @@ const TOKEN_COUNTER: Symbol = symbol_short!("COUNTER");
 #[derive(Clone)]
 pub enum DataKey {
     Owner(u64),
+    Metadata(u64),
 }
 
 #[contract]
@@ -61,5 +62,53 @@ impl NftContract {
     /// Get the total number of tokens minted
     pub fn total_supply(env: Env) -> u64 {
         env.storage().instance().get(&TOKEN_COUNTER).unwrap_or(0)
+    }
+
+    /// Mint a new NFT with metadata to the specified address
+    pub fn mint_with_metadata(env: Env, to: Address, metadata: String) -> u64 {
+        to.require_auth();
+
+        // Get next token ID
+        let token_id: u64 = env.storage().instance().get(&TOKEN_COUNTER).unwrap_or(0);
+
+        // Store owner
+        env.storage()
+            .persistent()
+            .set(&DataKey::Owner(token_id), &to);
+
+        // Store metadata
+        env.storage()
+            .persistent()
+            .set(&DataKey::Metadata(token_id), &metadata);
+
+        // Increment counter
+        env.storage()
+            .instance()
+            .set(&TOKEN_COUNTER, &(token_id + 1));
+
+        token_id
+    }
+
+    /// Set or update metadata for an existing token
+    pub fn set_metadata(env: Env, token_id: u64, from: Address, metadata: String) {
+        from.require_auth();
+
+        let owner = Self::owner_of(env.clone(), token_id);
+
+        if owner != from {
+            panic!("not the owner");
+        }
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Metadata(token_id), &metadata);
+    }
+
+    /// Get metadata for a specific token
+    pub fn get_metadata(env: Env, token_id: u64) -> String {
+        env.storage()
+            .persistent()
+            .get(&DataKey::Metadata(token_id))
+            .unwrap_or_else(|| String::from_str(&env, ""))
     }
 }
