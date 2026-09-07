@@ -27,7 +27,7 @@
 //! ```
 
 #![no_std]
-use soroban_sdk::{contract, contractimpl, symbol_short, Env, Symbol};
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Symbol};
 
 const COUNTER_KEY: Symbol = symbol_short!("COUNTER");
 
@@ -90,6 +90,25 @@ impl CounterContract {
     /// ```
     pub fn get(env: Env) -> i32 {
         env.storage().instance().get(&COUNTER_KEY).unwrap_or(0)
+    }
+
+    /// Resets the counter to 0.
+    ///
+    /// This function requires authorization from the caller.
+    ///
+    /// # Arguments
+    /// * `user` - The address that is authorized to reset the counter
+    ///
+    /// # Authorization
+    /// Requires authentication from the `user` address.
+    ///
+    /// # Example
+    /// ```ignore
+    /// client.reset(&admin); // Resets counter to 0
+    /// ```
+    pub fn reset(env: Env, user: Address) {
+        user.require_auth();
+        env.storage().instance().set(&COUNTER_KEY, &0);
     }
 }
 
