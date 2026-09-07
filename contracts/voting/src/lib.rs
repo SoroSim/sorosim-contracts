@@ -13,6 +13,7 @@ pub enum ProposalStatus {
     Passed,
     Rejected,
     Tied,
+    Cancelled,
 }
 
 /// Proposal data structure
@@ -203,6 +204,37 @@ impl VotingContract {
             .unwrap_or_else(|| panic!("proposal does not exist"));
 
         proposal.finalized
+    }
+
+    /// Cancel a proposal before it is finalized
+    pub fn cancel_proposal(env: Env, proposal_id: u64, creator: Address) {
+        creator.require_auth();
+
+        // Get proposal
+        let mut proposal: Proposal = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Proposal(proposal_id))
+            .unwrap_or_else(|| panic!("proposal does not exist"));
+
+        // Check if already finalized
+        if proposal.finalized {
+            panic!("proposal already finalized");
+        }
+
+        // Check authorization - only creator can cancel
+        if proposal.creator != creator {
+            panic!("only creator can cancel");
+        }
+
+        // Mark as cancelled
+        proposal.status = ProposalStatus::Cancelled;
+        proposal.finalized = true;
+
+        // Store updated proposal
+        env.storage()
+            .persistent()
+            .set(&DataKey::Proposal(proposal_id), &proposal);
     }
 }
 
