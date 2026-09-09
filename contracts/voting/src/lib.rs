@@ -13,6 +13,7 @@ pub enum ProposalStatus {
     Passed,
     Rejected,
     Tied,
+    Cancelled,
 }
 
 /// Proposal data structure
@@ -203,6 +204,37 @@ impl VotingContract {
             .unwrap_or_else(|| panic!("proposal does not exist"));
 
         proposal.finalized
+    }
+
+    /// Cancel a proposal before it is finalized
+    pub fn cancel_proposal(env: Env, proposal_id: u64, creator: Address) {
+        creator.require_auth();
+
+        // Get proposal
+        let mut proposal: Proposal = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Proposal(proposal_id))
+            .unwrap_or_else(|| panic!("proposal does not exist"));
+
+        // Check if already finalized
+        if proposal.finalized {
+            panic!("proposal already finalized");
+        }
+
+        // Check authorization - only creator can cancel
+        if proposal.creator != creator {
+            panic!("only creator can cancel");
+        }
+
+        // Mark as cancelled
+        proposal.status = ProposalStatus::Cancelled;
+        proposal.finalized = true;
+
+        // Store updated proposal
+        env.storage()
+            .persistent()
+            .set(&DataKey::Proposal(proposal_id), &proposal);
     }
 }
 
@@ -483,5 +515,156 @@ mod test {
         client.finalize(&proposal_id);
 
         client.vote(&proposal_id, &voter, &true); // Should panic
+    }
+
+    #[test]
+    fn test_cancel_proposal() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+
+        let contract_id = env.register_contract(None, VotingContract);
+        let client = VotingContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        env.mock_all_auths();
+
+        let deadline = 200;
+        let proposal_id =
+            client.create_proposal(&creator, &String::from_str(&env, "Test"), &deadline);
+
+        // Cancel the proposal
+        client.cancel_proposal(&proposal_id, &creator);
+
+        let proposal = client.get_proposal(&proposal_id);
+        assert_eq!(proposal.status, ProposalStatus::Cancelled);
+        assert_eq!(proposal.finalized, true);
+    }
+
+    #[test]
+    #[should_panic(expected = "only creator can cancel")]
+    fn test_cancel_proposal_not_creator() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+
+        let contract_id = env.register_contract(None, VotingContract);
+        let client = VotingContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        let other = Address::generate(&env);
+        env.mock_all_auths();
+
+        let deadline = 200;
+        let proposal_id =
+            client.create_proposal(&creator, &String::from_str(&env, "Test"), &deadline);
+
+        // Try to cancel as non-creator
+        client.cancel_proposal(&proposal_id, &other); // Should panic
+    }
+
+    #[test]
+    #[should_panic(expected = "proposal already finalized")]
+    fn test_cancel_after_finalize() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+
+        let contract_id = env.register_contract(None, VotingContract);
+        let client = VotingContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        env.mock_all_auths();
+
+        let deadline = 200;
+        let proposal_id =
+            client.create_proposal(&creator, &String::from_str(&env, "Test"), &deadline);
+
+        // Finalize the proposal
+        env.ledger().with_mut(|li| li.timestamp = 201);
+        client.finalize(&proposal_id);
+
+        // Try to cancel after finalization
+        client.cancel_proposal(&proposal_id, &creator); // Should panic
+    }
+
+    #[test]
+    #[should_panic(expected = "proposal already finalized")]
+    fn test_vote_after_cancel() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+
+        let contract_id = env.register_contract(None, VotingContract);
+        let client = VotingContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        let voter = Address::generate(&env);
+        env.mock_all_auths();
+
+        let deadline = 200;
+        let proposal_id =
+            client.create_proposal(&creator, &String::from_str(&env, "Test"), &deadline);
+
+        // Cancel the proposal
+        client.cancel_proposal(&proposal_id, &creator);
+
+        // Try to vote after cancellation
+        client.vote(&proposal_id, &voter, &true); // Should panic
+    }
+
+    #[test]
+    fn test_cancel_with_existing_votes() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+
+        let contract_id = env.register_contract(None, VotingContract);
+        let client = VotingContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        let voter1 = Address::generate(&env);
+        let voter2 = Address::generate(&env);
+        env.mock_all_auths();
+
+        let deadline = 200;
+        let proposal_id =
+            client.create_proposal(&creator, &String::from_str(&env, "Test"), &deadline);
+
+        // Vote before cancellation
+        client.vote(&proposal_id, &voter1, &true);
+        client.vote(&proposal_id, &voter2, &false);
+
+        let (yes, no) = client.get_tally(&proposal_id);
+        assert_eq!(yes, 1);
+        assert_eq!(no, 1);
+
+        // Cancel the proposal
+        client.cancel_proposal(&proposal_id, &creator);
+
+        let proposal = client.get_proposal(&proposal_id);
+        assert_eq!(proposal.status, ProposalStatus::Cancelled);
+        assert_eq!(proposal.finalized, true);
+
+        // Votes should still be recorded
+        assert_eq!(proposal.yes_votes, 1);
+        assert_eq!(proposal.no_votes, 1);
+    }
+
+    #[test]
+    fn test_cancel_before_deadline() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 100);
+
+        let contract_id = env.register_contract(None, VotingContract);
+        let client = VotingContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        env.mock_all_auths();
+
+        let deadline = 200;
+        let proposal_id =
+            client.create_proposal(&creator, &String::from_str(&env, "Test"), &deadline);
+
+        // Cancel before deadline (should work)
+        env.ledger().with_mut(|li| li.timestamp = 150);
+        client.cancel_proposal(&proposal_id, &creator);
+
+        assert_eq!(client.get_status(&proposal_id), ProposalStatus::Cancelled);
     }
 }
