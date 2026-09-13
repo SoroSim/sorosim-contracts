@@ -26,7 +26,7 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Cache cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
@@ -34,7 +34,7 @@ jobs:
             ${{ runner.os }}-cargo-registry-
 
       - name: Cache cargo index
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cargo/git
           key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
@@ -42,7 +42,7 @@ jobs:
             ${{ runner.os }}-cargo-index-
 
       - name: Cache target directory
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: target
           key: ${{ runner.os }}-target-check-${{ hashFiles('**/Cargo.lock') }}
@@ -81,19 +81,19 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Cache cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache cargo index
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cargo/git
           key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache target directory
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: target
           key: ${{ runner.os }}-target-clippy-${{ hashFiles('**/Cargo.lock') }}
@@ -112,19 +112,19 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache cargo index
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cargo/git
           key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache target directory
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: target
           key: ${{ runner.os }}-target-test-${{ hashFiles('**/Cargo.lock') }}
@@ -147,19 +147,19 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Cache cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache cargo index
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cargo/git
           key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache target directory
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: target
           key: ${{ runner.os }}-target-wasm-${{ hashFiles('**/Cargo.lock') }}
@@ -196,7 +196,7 @@ jobs:
 
       - name: Cache cargo (Unix)
         if: runner.os != 'Windows'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -206,7 +206,7 @@ jobs:
 
       - name: Cache cargo (Windows)
         if: runner.os == 'Windows'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~\.cargo\registry
